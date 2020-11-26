@@ -1,72 +1,77 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { selectCoordinates } from './../store/map/map.selectors';
+import { actionAddCoordinate } from './../store/map/map.actions';
+import { Component, OnInit, ChangeDetectorRef, OnDestroy } from '@angular/core';
+import { takeUntil } from 'rxjs/operators';
+import { Store } from '@ngrx/store';
 import * as mapboxgl from 'mapbox-gl';
 import { environment } from 'src/environments/environment';
+import { RootState } from '../store/root.state';
+import { Subject } from 'rxjs';
 @Component({
   selector: 'app-map',
   templateUrl: './map.component.html',
   styleUrls: ['./map.component.css']
 })
-export class MapComponent implements OnInit {
+export class MapComponent implements OnInit, OnDestroy {
   map: mapboxgl.Map;
-  style = 'mapbox://styles/mapbox/streets-v11';
-  lat = 37.75;
-  lng = -122.41;
+  $destroyed = new Subject();
 
-  coordinates: number[][] = [];
-
-  constructor() { }
+  constructor(private store: Store<RootState>) { }
 
   ngOnInit() {
     this.map = new mapboxgl.Map({
       accessToken: environment.mapbox.accessToken,
       container: 'map',
-      style: this.style,
+      style: 'mapbox://styles/mapbox/streets-v11',
       zoom: 5,
-      center: [-68.13734351262877, 45.137451890638886],
+      center: [54.45401027719555, 32.35924477033592],
     });
-    // Add map controls
-    this.map.addControl(new mapboxgl.NavigationControl());
+
     this.map.on('load', () => {
-      this.map.addSource('maine', {
+      this.map.addSource('iran', {
         type: 'geojson',
-        data: {
-          type: 'Feature',
-          geometry: {
-            type: 'Polygon',
-            coordinates: []
-          },
-          properties: {}
-        }
+        data: null
       });
 
       this.map.addLayer({
-        id: 'maine',
+        id: 'farm',
         type: 'fill',
-        source: 'maine',
+        source: 'iran',
         layout: {},
         paint: {
           "fill-color": '#088',
           "fill-opacity": 0.8
         }
       });
+
+      this.store.select(selectCoordinates).pipe(
+        takeUntil(this.$destroyed)
+      ).subscribe(coordinates => {
+        this.setPolygonData(coordinates);
+      })
     })
 
     this.map.on('click', e => {
-      console.log(`A click event has occured at ${e.lngLat}`);
-      this.coordinates = [
-        ...this.coordinates,
-        [e.lngLat.lng, e.lngLat.lat]
-      ];
-      const source = this.map.getSource('maine');
-      (<any>source).setData({
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: [[...this.coordinates]]
-        },
-        properties: {}
-      });
-      debugger;
+      this.store.dispatch(actionAddCoordinate({
+        lng: e.lngLat.lng,
+        lat: e.lngLat.lat
+      }));
     })
+  }
+
+  private setPolygonData(coordinates: number[][]): any {
+    const source = this.map.getSource('iran');
+    (<any>source).setData({
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[...coordinates]]
+      },
+      properties: {}
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.$destroyed.next();
   }
 }
